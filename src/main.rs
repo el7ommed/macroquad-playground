@@ -25,6 +25,13 @@ impl Shape {
     }
 }
 
+enum GameState {
+    MainMenu,
+    Playing,
+    Paused,
+    GameOver,
+}
+
 #[macroquad::main("My game")]
 async fn main() {
     const MOVEMENT_SPEED: f32 = 200.0;
@@ -39,16 +46,39 @@ async fn main() {
         y: screen_height() / 2.0,
         collided: false,
     };
-    let mut gameover = false;
     let mut score: u32 = 0;
     let mut high_score: u32 = fs::read_to_string("highscore.dat")
         .map_or(Ok(0), |i| i.parse::<u32>())
         .unwrap_or(0);
+    let mut game_state = GameState::MainMenu;
 
     loop {
         clear_background(DARKPURPLE);
 
-        if !gameover {
+        match game_state {
+            GameState::MainMenu => {
+                if is_key_pressed(KeyCode::Escape) {
+                    std::process::exit(0);
+                }
+                if is_key_pressed(KeyCode::Space) {
+                    squares.clear();
+                    bullets.clear();
+                    circle.x = screen_width() / 2.0;
+                    circle.y = screen_height() / 2.0;
+                    score = 0;
+                    game_state = GameState::Playing;
+                }
+                let text = "Press space";
+                let text_dimensions = measure_text(text, None, 50, 1.0);
+                draw_text(
+                    text,
+                    screen_width() / 2.0 - text_dimensions.width / 2.0,
+                    screen_height() / 2.0,
+                    50.0,
+                    WHITE,
+                );
+            }
+            GameState::Playing => {
             let delta_time = get_frame_time();
             if is_key_down(KeyCode::Right) {
                 circle.x += MOVEMENT_SPEED * delta_time;
@@ -71,6 +101,9 @@ async fn main() {
                     collided: false,
                 });
             }
+                if is_key_pressed(KeyCode::Escape) {
+                    game_state = GameState::Paused;
+                }
 
             // Clamp X and Y to be within the screen
             circle.x = clamp(circle.x, 0.0, screen_width());
@@ -103,23 +136,13 @@ async fn main() {
             // Remove collided shapes
             squares.retain(|square| !square.collided);
             bullets.retain(|bullet| !bullet.collided);
-        }
-
-        if gameover && is_key_pressed(KeyCode::Space) {
-            squares.clear();
-            bullets.clear();
-            circle.x = screen_width() / 2.0;
-            circle.y = screen_height() / 2.0;
-            score = 0;
-            gameover = false;
-        }
 
         // Check for collisions
         if squares.iter().any(|square| circle.collides_with(square)) {
             if score == high_score {
                 fs::write("highscore.dat", high_score.to_string()).ok();
             }
-            gameover = true;
+            game_state = GameState::GameOver;
         }
         for square in squares.iter_mut() {
             for bullet in bullets.iter_mut() {
@@ -162,7 +185,25 @@ async fn main() {
             25.0,
             WHITE,
         );
-        if gameover {
+            }
+            GameState::Paused => {
+                if is_key_pressed(KeyCode::Space) {
+                    game_state = GameState::Playing;
+                }
+                let text = "Paused";
+                let text_dimensions = measure_text(text, None, 50, 1.0);
+                draw_text(
+                    text,
+                    screen_width() / 2.0 - text_dimensions.width / 2.0,
+                    screen_height() / 2.0,
+                    50.0,
+                    WHITE,
+                );
+            }
+            GameState::GameOver => {
+                if is_key_pressed(KeyCode::Space) {
+                    game_state = GameState::MainMenu;
+                }
             let text = "GAME OVER!";
             let text_dimensions = measure_text(text, None, 50, 1.0);
             draw_text(
@@ -172,6 +213,7 @@ async fn main() {
                 50.0,
                 RED,
             );
+            }
         }
 
         next_frame().await
